@@ -39,11 +39,10 @@
 #include "codec2_fifo.h"
 #include "stm32f4_adc_tuner.h"
 #include "debugblinky.h"
-#include "iir_tuner.c"
+#include "iir_tuner.h"
 
 struct FIFO *adc1_fifo;
 unsigned short adc_buf[ADC_TUNER_BUF_SZ];
-float y_2, y_1;
 int adc_overflow1;
 int half,full;
 
@@ -51,9 +50,6 @@ int half,full;
 #define DMA_CHANNELx             DMA_Channel_0
 #define DMA_STREAMx              DMA2_Stream0
 #define ADCx                     ADC1
-
-#define BETA1                    0.999
-#define BETA2                    0.955
 
 void adc_configure();
 
@@ -90,15 +86,18 @@ static void tim2_config(void)
   APB1 prescaler is different from 1 (see system_stm32f4xx.c and Fig
   13 clock tree figure in DM0031020.pdf).
 
-     Sample rate Fs = 2*PCLK1/TIM_ClockDivision 
-                    = (HCLK/2)/TIM_ClockDivision
+     Sample rate Fs = 2*PCLK1/)TIM_ClockDivision+1)
+                    = (HCLK/2)/(TIM_ClockDivision+1)
                     
+  Note from David: The +1 was discovered empirically, still not sure
+  if it's right.
+
   ----------------------------------------------------------- */
 
   /* Time base configuration */
 
   TIM_TimeBaseStructInit(&TIM_TimeBaseStructure); 
-  TIM_TimeBaseStructure.TIM_Period = 42;          
+  TIM_TimeBaseStructure.TIM_Period = 41;          
   TIM_TimeBaseStructure.TIM_Prescaler = 0;       
   TIM_TimeBaseStructure.TIM_ClockDivision = 0;    
   TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;  
@@ -114,7 +113,7 @@ static void tim2_config(void)
 }
 
 
-void adc_configure(){
+void adc_configure() {
     ADC_InitTypeDef  ADC_init_structure; 
     GPIO_InitTypeDef GPIO_initStructre; 
     DMA_InitTypeDef  DMA_InitStructure;
@@ -201,12 +200,32 @@ void adc_configure(){
 
 /*
   This function handles DMA Stream interrupt request.
+
+  ADC_TUNER_BUF_SZ = 45 * 160 = 7200, so one interrupt every 7200/2 = 3600 samples
+  or interrupts at a rate of 2E6/3600 = 555.56 Hz.
 */
 
 void DMA2_Stream0_IRQHandler(void) {
-    short dec_buf[ADC_TUNER_N/2];
+    float dec_buf[ADC_TUNER_N/2];
+    int i;
 
-    GPIOE->ODR = (1 << 0);
+    /* PE0 is asserted high for the duration of this ISR */
+
+    GPIOE->ODR |= (1 << 0);
+
+    //#define DUMMY_SIGNAL
+    #ifdef DUMMY_SIGNAL
+
+    /* Fs/4 sine wave, right in the middle of the pass band ! */
+
+    for(i=0; i<ADC_TUNER_BUF_SZ; i++)
+        adc_buf[i] = 32767;
+    for(i=1; i<ADC_TUNER_BUF_SZ; i+=4)
+        adc_buf[i] += 32767;
+    for(i=3; i<ADC_TUNER_BUF_SZ; i+=4)
+        adc_buf[i] -= 32767;
+
+    #endif
 
     /* Half transfer interrupt */
 
@@ -217,7 +236,7 @@ void DMA2_Stream0_IRQHandler(void) {
 
         /* write first half to fifo */
 
-        if (fifo_write(adc1_fifo, dec_buf, ADC_TUNER_N/2) == -1) {
+        if (fifo_write(adc1_fifo, (short*)dec_buf, ADC_TUNER_N) == -1) {
             adc_overflow1++;
         }
 
@@ -235,7 +254,7 @@ void DMA2_Stream0_IRQHandler(void) {
 
         /* write second half to fifo */
 
-        if (fifo_write(adc1_fifo, dec_buf, ADC_TUNER_N/2) == -1) {
+        if (fifo_write(adc1_fifo, (short*)dec_buf, ADC_TUNER_N) == -1) {
             adc_overflow1++;
         }
 

@@ -1,11 +1,10 @@
 /*---------------------------------------------------------------------------*\
 
-  FILE........: stm32f4_adc_tuner.h
+  FILE........: iir_tuner.h
   AUTHOR......: David Rowe
-  DATE CREATED: 19 Feb 2015
+  DATE CREATED: 20 Feb 2015
 
-  Single channel ADC driver module for STM32F4 that samples pin PA1 at
-  2 MHz and down converts to 50 kHz, with "tuning" centred at 500 kHz.
+  Header file for IIR tuner function.
 
 \*---------------------------------------------------------------------------*/
 
@@ -26,14 +25,12 @@
   along with this program; if not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef __STM32F4_ADC_TUNER__
-#define __STM32F4_ADC_TUNER__
+#ifndef __IIR_TUNER__
+#define __IIR_TUNER__
 
-#define ADC_TUNER_M  45   /* decimation rate */
-#define ADC_TUNER_N  160
-#define ADC_TUNER_BUF_SZ  (ADC_TUNER_M*ADC_TUNER_N)
+#define IIR_TUNER_DEC_50_10_FILT_MEM 100
 
-void adc_open(int fifo_sz);
-int adc1_read(short buf[], int n); /* ADC1 Pin PA1 */
+void iir_tuner(float dec_50[], unsigned short adc_buf[]);
+void iir_tuner_dec_50_to_10(float dec_10[], float dec_50[], int n);
 
 #endif
